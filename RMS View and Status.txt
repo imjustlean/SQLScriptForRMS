@@ -1,0 +1,792 @@
+USE [SHHDB]
+GO
+
+/****** Object:  View [dbo].[RoomViewDetailsv2]    Script Date: 02/22/2024 11:50:12 AM ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* occupied rooms*/
+ALTER VIEW [dbo].[RoomViewDetailsv2]
+AS
+SELECT FK_psRooms, roomstatus
+, 
+                                    CASE WHEN GGA.roomstatus = 'Occupied' THEN 'occupied-totitem' 
+										 WHEN GGA.roomstatus = 'For Clearance' THEN 'mghc-totitem' 
+										 WHEN GGA.roomstatus = 'For Discharge' THEN 'mgh-totitem' 
+										 WHEN GGA.roomstatus = 'For Cleaning' THEN
+
+										CASE WHEN (SELECT COUNT(PK_TRXNO) FROM SHHDB.dbo.SHHRMS_RoomCleanHistory JJA WHERE JJA.FK_pspatregisters = GGA.PK_psPatRegisters and JJA.FK_psRoom = GGA.FK_psRooms COLLATE Latin1_General_CI_AS)> 0
+										THEN 'cleanstarted' ELSE 
+										 
+											(SELECT TOP 1 kkkm.Class
+											 FROM      SHHRMS_RoomCleanTypeHistory kkkl LEFT OUTER JOIN
+															   SHHRMS_MDRoomCleanType kkkm ON kkkl.FK_CleanType = kkkm.PK_RoomCleanType --and kkkl.RoomNo = FK_psRooms COLLATE SQL_Latin1_General_CP1_CI_AS
+											 WHERE   FK_pspatRegisters = GGA.PK_psPatRegisters ORDER BY kkkl.ForCleanDateTime desc) END
+										 
+										 WHEN GGA.roomstatus = 'Available' THEN 'available-totitem'
+										 WHEN GGA.roomstatus = 'Reserved ER' THEN 'reserveder'
+										 WHEN GGA.roomstatus='Reserved Direct' THEN 'reserveddirect'
+										 WHEN GGA.roomstatus = 'Reserved Transfer' THEN 'reservedadmit' 
+										 WHEN GGA.roomstatus = 'For Setting of Clean Type' THEN 'cleansettype'
+										 WHEN GGA.roomstatus = 'For Repair' THEN 'repair-totitem'
+										 END AS Class,
+										 
+
+                                    CASE WHEN GGA.roomstatus = 'Occupied' THEN 'showModalForOccupied' WHEN GGA.roomstatus = 'For Clearance' THEN 'showModalForClearance' WHEN GGA.roomstatus = 'For Discharge' THEN 'showModalForDischarge' WHEN
+                                     GGA.roomstatus = 'For Cleaning' THEN 'showModalForCleaning' WHEN GGA.roomstatus = 'Available' THEN 'showModalForViewDetails'
+									 WHEN GGA.roomstatus = 'Reserved ER' then 'showModalForReservedER' WHEN GGA.roomstatus='Reserved Direct' THEN 'showModalForReservedDirect'
+									 WHEN GGA.roomstatus = 'For Setting of Clean Type' THEN 'showModalForCleanSetType'
+									 WHEN GGA.roomstatus  = 'Reserved Transfer' THEN 'showModalForReservedTransfer'
+									 WHEN GGA.roomstatus = 'For Repair' THEN 'showModalForRepair'
+									 END AS OnClick
+
+                  FROM      (
+				  
+				  --- nakaregister pa sa BIZBOX	
+
+				  SELECT bb.FK_psRooms, CASE WHEN aa.registrystatus = 'C' THEN 'For Clearance' WHEN aa.registrystatus = 'F' THEN 'For Clearance' WHEN aa.registrystatus = 'M' THEN CASE 
+															
+															WHEN
+                                                           (SELECT COUNT(zza.PK_TRXNO)
+                                                            FROM      SHHRMS_RoomCleanTypeHistory zza
+                                                            WHERE   zza.FK_pspatRegisters = aa.PK_psPatRegisters and (zza.RoomNo = bb.FK_psRooms COLLATE Latin1_General_CI_AS or zza.RoomNo = bb.bedno COLLATE Latin1_General_CI_AS)) > 0 AND
+                                                           (SELECT COUNT(zza.PK_TRXNO)
+                                                            FROM      SHHRMS_PatientOutinv zza
+                                                            WHERE   zza.FK_pspatRegisters = aa.PK_psPatRegisters and (zza.RoomNo = bb.FK_psRooms COLLATE Latin1_General_CI_AS or zza.RoomNo = bb.bedno COLLATE Latin1_General_CI_AS) and zza.TimeStamp>aa.mghdatetime) > 0 AND
+                                                           (SELECT COUNT(zza.PK_TRXNO)
+                                                            FROM      SHHRMS_RoomCleanHistory zza
+                                                            WHERE   zza.FK_pspatRegisters = aa.PK_psPatRegisters and (zza.FK_psRoom = bb.FK_psRooms COLLATE Latin1_General_CI_AS or zza.FK_psRoom = bb.bedno COLLATE Latin1_General_CI_AS) and zza.cleandate>aa.mghdatetime) > 1 AND
+															(SELECT COUNT(zza.PK_TRXNO)
+                                                            FROM      SHHRMS_RoomReservationHistory zza
+                                                            WHERE   zza.FK_psRooms = cc.PK_psRooms COLLATE Latin1_General_CI_AS and aa.registrydate<zza.ResExpdatetmie and zza.isCancel<>1) > 0 
+															
+															THEN 
+
+																CASE WHEN (SELECT COUNT(kka.PK_TRXNO)
+																   FROM      SHHDB.dbo.SHHRMS_RoomReservationHistory kka
+																   WHERE   kka.ResExpdatetmie >
+																						 (SELECT TOP 1 jja.registrydate
+																						  FROM      LiveDB_shhbizbox8live.dbo.psPatRegisters jja LEFT OUTER JOIN
+																											LiveDB_shhbizbox8live.dbo.psAdmissions jjb ON jja.PK_psPatRegisters = jjb.FK_psPatRegisters
+																						  WHERE   jjb.FK_psRooms = cc.PK_psRooms AND jja.cancelflag <> 1
+																						  ORDER BY registrydate DESC) AND kka.FK_psRooms = cc.PK_psRooms COLLATE Latin1_General_CI_AS) > 0 THEN
+																  (SELECT TOP 1 CASE WHEN kka.ReserveType = 'E' THEN 'Reserved ER' WHEN kka.ReserveType = 'T' THEN 'Reserved Transfer'  ELSE 'Reserved Direct' END
+																   FROM      SHHDB.dbo.SHHRMS_RoomReservationHistory kka
+																   WHERE   kka.ResExpdatetmie >
+																						 (SELECT TOP 1 jja.registrydate
+																						  FROM      LiveDB_shhbizbox8live.dbo.psPatRegisters jja LEFT OUTER JOIN
+																											LiveDB_shhbizbox8live.dbo.psAdmissions jjb ON jja.PK_psPatRegisters = jjb.FK_psPatRegisters
+																						  WHERE   jjb.FK_psRooms = cc.PK_psRooms AND jja.cancelflag <> 1
+																						  ORDER BY registrydate DESC) AND kka.FK_psRooms = cc.PK_psRooms COLLATE Latin1_General_CI_AS
+																   ORDER BY kka.Reqdatetime DESC) 
+																   END
+				  
+				  
+															WHEN
+                                                           (SELECT COUNT(zza.PK_TRXNO)
+                                                            FROM      SHHRMS_RoomCleanTypeHistory zza
+                                                            WHERE   zza.FK_pspatRegisters = aa.PK_psPatRegisters and (zza.RoomNo = bb.FK_psRooms COLLATE Latin1_General_CI_AS or zza.RoomNo = bb.bedno COLLATE Latin1_General_CI_AS)) > 0 AND
+                                                           (SELECT COUNT(zza.PK_TRXNO)
+                                                            FROM      SHHRMS_PatientOutinv zza
+                                                            WHERE   zza.FK_pspatRegisters = aa.PK_psPatRegisters  and (zza.RoomNo = bb.FK_psRooms COLLATE Latin1_General_CI_AS or zza.RoomNo = bb.bedno COLLATE Latin1_General_CI_AS)) > 0 AND
+                                                           (SELECT COUNT(zza.PK_TRXNO)
+                                                            FROM      SHHRMS_RoomCleanHistory zza
+                                                            WHERE   zza.FK_pspatRegisters = aa.PK_psPatRegisters  and (zza.FK_psRoom = bb.FK_psRooms COLLATE Latin1_General_CI_AS or zza.FK_psRoom = bb.bedno COLLATE Latin1_General_CI_AS)) > 1 
+															THEN 'Available' 
+															
+															WHEN
+                                                           (SELECT COUNT(zza.PK_TRXNO)
+                                                            FROM      SHHRMS_RoomCleanTypeHistory zza
+                                                            WHERE   zza.FK_pspatRegisters = aa.PK_psPatRegisters  and (zza.RoomNo = bb.FK_psRooms COLLATE Latin1_General_CI_AS or zza.RoomNo = bb.bedno COLLATE Latin1_General_CI_AS)) > 0 AND
+                                                           (SELECT COUNT(zza.PK_TRXNO)
+                                                            FROM      SHHRMS_PatientOutinv zza
+                                                            WHERE   zza.FK_pspatRegisters = aa.PK_psPatRegisters and (zza.RoomNo = bb.FK_psRooms COLLATE Latin1_General_CI_AS or zza.RoomNo = bb.bedno COLLATE Latin1_General_CI_AS)) > 0 THEN 'For Cleaning' 
+															
+
+															WHEN
+                                                           (SELECT COUNT(zza.PK_TRXNO)
+                                                            FROM      SHHRMS_PatientOutinv zza
+                                                            WHERE   zza.FK_pspatRegisters = aa.PK_psPatRegisters  and (zza.RoomNo = bb.FK_psRooms COLLATE Latin1_General_CI_AS or zza.RoomNo = bb.bedno COLLATE Latin1_General_CI_AS)) >0
+															AND
+															(SELECT COUNT(zza.PK_TRXNO)
+                                                            FROM      SHHRMS_RoomCleanTypeHistory zza
+                                                            WHERE   zza.FK_pspatRegisters = aa.PK_psPatRegisters AND (zza.RoomNo = bb.FK_psRooms COLLATE Latin1_General_CI_AS or zza.RoomNo = bb.bedno COLLATE Latin1_General_CI_AS)) = 0 
+
+															THEN 
+
+															'For Setting of Clean Type'
+
+															
+															
+															ELSE 'For Discharge' END ELSE ee.description END AS roomstatus, aa.PK_psPatRegisters
+                                     FROM      LiveDB_shhbizbox8live.dbo.psPatRegisters AS aa LEFT OUTER JOIN
+                                                       LiveDB_shhbizbox8live.dbo.psAdmissions AS bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters LEFT OUTER JOIN
+                                                       LiveDB_shhbizbox8live.dbo.psRooms AS cc ON bb.FK_psRooms = cc.PK_psRooms LEFT OUTER JOIN
+                                                       LiveDB_shhbizbox8live.dbo.mscRoomStatus AS dd ON cc.FK_mscRoomStatus = dd.PK_mscRoomStatus LEFT OUTER JOIN
+                                                       LiveDB_shhbizbox8live.dbo.psBeds AS ff ON bb.bedno = ff.bedno LEFT OUTER JOIN
+                                                       LiveDB_shhbizbox8live.dbo.mscBedStatus AS ee ON ff.FK_mscBedStatus = ee.PK_mscBedStatus
+                                     WHERE   (aa.cancelflag <> 1) AND (aa.pattrantype = 'I') AND (aa.registrystatus <> 'D') AND aa.FK_mscServiceType<>1005 AND (cc.FK_mscNRStations NOT IN (1005, 1006, 1008, 1009, 1000,1003,1004))) AS GGA
+
+
+                  UNION
+
+				  ----- walang laman yung room / nadischarge na sa BIZBOX
+
+                  SELECT PK_psRooms, roomstatus, 
+                                    CASE WHEN HHHA.roomstatus = 'For Setting of Clean Type' THEN 'cleansettype' 
+										 WHEN HHHA.roomstatus = 'Closed Room' THEN 'close-totitem' 
+										 WHEN HHHA.roomstatus = 'Reserved ER' THEN 'reserveder' 
+										 WHEN HHHA.roomstatus = 'Reserved Direct' THEN 'reserveddirect' 
+										 WHEN HHHA.roomstatus = 'Reserved Transfer' THEN 'reservedadmit'
+										 WHEN HHHA.roomstatus = 'Available' THEN 'available-totitem' 
+										 WHEN HHHA.roomstatus = 'For Repair' THEN 'repair-totitem'
+										 WHEN HHHA.roomstatus = 'For Cleaning' THEN
+
+
+										 CASE WHEN ((SELECT COUNT(*) FROM SHHDB.dbo.SHHRMS_RoomCleanHistory ggga WHERE  ggga.FK_psRoom = HHHA.PK_psRooms COLLATE Latin1_General_CI_AS and ggga.FK_pspatregisters = 
+										 (SELECT TOP 1 xxx.PK_psPatRegisters FROM (
+																		SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																		LEFT OUTER JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																		WHERE aa.registrystatus NOT IN ('X') and (bb.FK_psRooms = HHHA.PK_psRooms or bb.bedno =  HHHA.PK_psRooms) and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S')) and bb.cancelflag<>1
+																		ORDER BY dischdate desc) zzz
+																		UNION
+																		SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																		LEFT OUTER JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																		LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																		WHERE (aa.FK_psRoomsFROM = HHHA.PK_psRooms or aa.bednofrom = HHHA.PK_psRooms) and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S')) and bb.registrystatus NOT IN ('X')
+																		ORDER BY aa.trandate desc) yyy) xxx
+																		ORDER BY xxx.dischdate desc)
+																		and 
+																		ggga.cleandate>
+																		(SELECT TOP 1 xxx.dischdate FROM (
+																		SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																		LEFT OUTER JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																		WHERE aa.registrystatus NOT IN ('X') and 
+																		(bb.FK_psRooms =  HHHA.PK_psRooms or bb.bedno =  HHHA.PK_psRooms) and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S')) and bb.cancelflag<>1
+																		ORDER BY dischdate desc) zzz
+																		UNION
+																		SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																		LEFT OUTER JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																		LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																		WHERE (aa.FK_psRoomsFROM =  HHHA.PK_psRooms or aa.bednofrom =  HHHA.PK_psRooms) and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S')) -- and bb.registrystatus IN ('D', 'M')
+																		ORDER BY aa.trandate desc) yyy) xxx
+																		ORDER BY xxx.dischdate desc)
+
+
+																		))>0
+										 THEN 'cleanstarted' ELSE
+
+
+                                        (SELECT TOP 1 kkkm.Class
+                                         FROM      SHHRMS_RoomCleanTypeHistory kkkl LEFT OUTER JOIN
+                                                           SHHRMS_MDRoomCleanType kkkm ON kkkl.FK_CleanType = kkkm.PK_RoomCleanType
+                                         WHERE   FK_pspatRegisters =
+                                                               (SELECT TOP 1 xxx.PK_psPatRegisters FROM (
+																		SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.registrydate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																		LEFT OUTER JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																		WHERE aa.registrystatus NOT IN ('X') and (bb.FK_psRooms = HHHA.PK_psRooms or bb.bedno =  HHHA.PK_psRooms) and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S')) and bb.cancelflag<>1
+																		ORDER BY dischdate desc) zzz
+																		UNION
+																		SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																		LEFT OUTER JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																		LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																		WHERE (aa.FK_psRoomsFROM = HHHA.PK_psRooms or aa.bednofrom = HHHA.PK_psRooms) and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S')) and bb.registrystatus NOT IN ('X')
+																		ORDER BY aa.trandate desc) yyy) xxx
+																		ORDER BY xxx.registrydate desc)) END END AS Class, 
+
+
+                                    CASE WHEN HHHA.roomstatus = 'For Setting of Clean Type' THEN 'showModalForCleanSetType' WHEN HHHA.roomstatus = 'Closed Room' THEN '' WHEN HHHA.roomstatus = 'Reserved ER' THEN 'showModalForReservedER' WHEN
+                                     HHHA.roomstatus = 'Reserved Direct' THEN 'showModalForReservedDirect' WHEN HHHA.roomstatus = 'Available' THEN 'showModalForViewDetails' WHEN HHHA.roomstatus= 'For Cleaning' THEN 'showModalForCleaning' 
+									 WHEN HHHA.roomstatus = 'Reserved Transfer' THEN 'showModalForReservedTransfer' WHEN HHHA.roomstatus = 'For Repair' THEN 'showModalForRepair'
+									 END AS onClick
+
+
+                  FROM     (SELECT zzz.PK_psRooms, CASE WHEN FK_mscRoomStatus = 1001 THEN CASE 
+
+
+				  				  					WHEN 
+													(SELECT COUNT(*) FROM (SELECT zzj.FK_psPatRegisters FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer zzj WHERE zzj.FK_psRoomsFROM = PK_psRooms
+															AND (SELECT COUNT(*) FROM LiveDB_shhbizbox8live.dbo.psPatRegisters zeb WHERE zeb.PK_psPatRegisters = zzj.FK_psPatRegisters and zeb.registrystatus NOT IN ('X'))>0
+															AND trandate >= (SELECT TOP 1 xxx.dischdate FROM (
+																					SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																					JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																					WHERE aa.registrystatus NOT IN ('X') and 
+																						bb.FK_psRooms = zzz.PK_psRooms and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S')) and (bb.cancelflag<>1 or bb.cancelflag is null)
+																					ORDER BY dischdate desc) zzz
+																					UNION
+																					SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																					JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																					LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																					WHERE aa.FK_psRoomsFROM = zzz.PK_psRooms and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S')) -- and bb.registrystatus IN ('D', 'M')
+																					ORDER BY aa.trandate desc) yyy) xxx
+																					ORDER BY xxx.dischdate desc)
+																
+															--ORDER BY zzj.trandate DESC
+															) zzz) > 0
+															AND
+															(SELECT COUNT(*) FROM SHHDB.dbo.SHHRMS_RoomCleanTypeHistory a WHERE RoomNo= PK_psRooms COLLATE Latin1_General_CI_AS and a.ForCleanDateTime >
+															(SELECT TOP 1 zzj.trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer zzj WHERE zzj.FK_psRoomsFROM =  PK_psRooms 
+															AND (SELECT COUNT(*) FROM LiveDB_shhbizbox8live.dbo.psPatRegisters zeb WHERE zeb.PK_psPatRegisters = zzj.FK_psPatRegisters and zeb.registrystatus NOT IN ('X'))>0  ORDER BY zzj.trandate DESC))=0
+															AND
+															(SELECT COUNT(*) FROM SHHDB.dbo.SHHRMS_RoomCleanHistory a WHERE FK_psRoom= PK_psRooms COLLATE Latin1_General_CI_AS and a.cleandate >
+															(SELECT TOP 1 zzj.trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer zzj WHERE zzj.FK_psRoomsFROM =  PK_psRooms
+															AND (SELECT COUNT(*) FROM LiveDB_shhbizbox8live.dbo.psPatRegisters zeb WHERE zeb.PK_psPatRegisters = zzj.FK_psPatRegisters and zeb.registrystatus NOT IN ('X'))>0  ORDER BY zzj.trandate DESC)) = 0 
+
+															AND
+
+															(SELECT COUNT(*) FROM (
+
+															SELECT jejeje.PK_psPatRegisters, jejeje.registrydate,jejeje.arrivedate,jajaja.* FROM (
+															SELECT zzj.FK_psPatRegisters,trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer zzj WHERE zzj.FK_psRoomsFROM = PK_psRooms
+																															AND (SELECT COUNT(*) FROM LiveDB_shhbizbox8live.dbo.psPatRegisters zeb WHERE zeb.PK_psPatRegisters = zzj.FK_psPatRegisters and zeb.registrystatus NOT IN ('X'))>0
+																
+																															AND trandate >= (SELECT TOP 1 xxx.dischdate FROM (
+																																					SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																																					JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																																					WHERE aa.registrystatus NOT IN ('X') and 
+																																						bb.FK_psRooms = zzz.PK_psRooms and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S')) and (bb.cancelflag<>1 or bb.cancelflag is null)
+																																					ORDER BY dischdate desc) zzz
+																																					UNION
+																																					SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																																					JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																																					LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																																					WHERE aa.FK_psRoomsFROM = zzz.PK_psRooms and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S')) -- and bb.registrystatus IN ('D', 'M')
+																																					ORDER BY aa.trandate desc) yyy) xxx
+																																					ORDER BY xxx.dischdate desc)) jajaja
+															LEFT JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters jejeje on jajaja.FK_psPatRegisters= jejeje.PK_psPatRegisters) kakaka
+															WHERE ((kakaka.trandate between registrydate and arrivedate) or arrivedate is null)) > 0
+																
+													THEN 'Available'
+																
+																WHEN 
+														(SELECT COUNT(*) FROM (SELECT zzj.FK_psPatRegisters FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer zzj WHERE zzj.FK_psRoomsFROM = PK_psRooms
+																AND (SELECT COUNT(*) FROM LiveDB_shhbizbox8live.dbo.psPatRegisters zeb WHERE zeb.PK_psPatRegisters = zzj.FK_psPatRegisters and zeb.registrystatus NOT IN ('X'))>0
+																AND trandate >= (SELECT TOP 1 xxx.dischdate FROM (
+																						SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																						JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																						WHERE aa.registrystatus NOT IN ('X') and 
+																						 bb.FK_psRooms = zzz.PK_psRooms and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S')) and (bb.cancelflag<>1 or bb.cancelflag is null)
+																						ORDER BY dischdate desc) zzz
+																						UNION
+																						SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																						JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																						LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																						WHERE aa.FK_psRoomsFROM = zzz.PK_psRooms and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S')) -- and bb.registrystatus IN ('D', 'M')
+																						ORDER BY aa.trandate desc) yyy) xxx
+																						ORDER BY xxx.dischdate desc)
+																
+																--ORDER BY zzj.trandate DESC
+																) zzz) > 0
+																AND
+																(SELECT COUNT(*) FROM SHHDB.dbo.SHHRMS_RoomCleanTypeHistory a WHERE RoomNo= PK_psRooms COLLATE Latin1_General_CI_AS and a.ForCleanDateTime >
+																(SELECT TOP 1 zzj.trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer zzj WHERE zzj.FK_psRoomsFROM =  PK_psRooms 
+																AND (SELECT COUNT(*) FROM LiveDB_shhbizbox8live.dbo.psPatRegisters zeb WHERE zeb.PK_psPatRegisters = zzj.FK_psPatRegisters and zeb.registrystatus NOT IN ('X'))>0  ORDER BY zzj.trandate DESC))=0
+																AND
+																(SELECT COUNT(*) FROM SHHDB.dbo.SHHRMS_RoomCleanHistory a WHERE FK_psRoom= PK_psRooms COLLATE Latin1_General_CI_AS and a.cleandate >
+																(SELECT TOP 1 zzj.trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer zzj WHERE zzj.FK_psRoomsFROM =  PK_psRooms
+																AND (SELECT COUNT(*) FROM LiveDB_shhbizbox8live.dbo.psPatRegisters zeb WHERE zeb.PK_psPatRegisters = zzj.FK_psPatRegisters and zeb.registrystatus NOT IN ('X'))>0  ORDER BY zzj.trandate DESC)) = 0 
+																
+																THEN 'For Setting of Clean Type'
+
+				  
+														 WHEN
+                                                          (SELECT COUNT(PK_TRXNO)
+                                                           FROM      SHHDB.dbo.SHHRMS_RoomCleanTypeHistory hha
+                                                           WHERE   hha.FK_pspatRegisters =
+                                                                                 (SELECT TOP 1 xxx.PK_psPatRegisters FROM (
+																						SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																						JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																						WHERE aa.registrystatus NOT IN ('X') and 
+																						 bb.FK_psRooms = zzz.PK_psRooms and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S'))  and (bb.cancelflag<>1 or bb.cancelflag is null)
+																						ORDER BY dischdate desc) zzz
+																						UNION
+																						SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																						JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																						LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																						WHERE aa.FK_psRoomsFROM = zzz.PK_psRooms and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S'))  -- and bb.registrystatus IN ('D', 'M')
+																						ORDER BY aa.trandate desc) yyy) xxx
+																						ORDER BY xxx.dischdate desc)) = 0 THEN 'For Setting of Clean Type' 
+																				  
+														WHEN 
+														
+															(SELECT COUNT(*) FROM (SELECT zzj.FK_psPatRegisters FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer zzj WHERE zzj.FK_psRoomsFROM = PK_psRooms
+																AND (SELECT COUNT(*) FROM LiveDB_shhbizbox8live.dbo.psPatRegisters zeb WHERE zeb.PK_psPatRegisters = zzj.FK_psPatRegisters and zeb.registrystatus NOT IN ('X')
+																)>0	
+																AND trandate >= (SELECT TOP 1 xxx.dischdate FROM (
+																						SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																						JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																						WHERE aa.registrystatus NOT IN ('X') and 
+																						 bb.FK_psRooms = zzz.PK_psRooms and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S')) and (bb.cancelflag<>1 or bb.cancelflag is null)
+																						ORDER BY dischdate desc) zzz
+																						UNION
+																						SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																						JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																						LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																						WHERE aa.FK_psRoomsFROM = zzz.PK_psRooms and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S')) -- and bb.registrystatus IN ('D', 'M')
+																						ORDER BY aa.trandate desc) yyy) xxx
+																						ORDER BY xxx.dischdate desc)
+															--ORDER BY zzj.trandate DESC
+																) zzz) > 0
+																AND
+																(SELECT COUNT(*) FROM SHHDB.dbo.SHHRMS_RoomCleanTypeHistory a WHERE RoomNo= PK_psRooms COLLATE Latin1_General_CI_AS and a.ForCleanDateTime >
+																(SELECT TOP 1 zzj.trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer zzj WHERE zzj.FK_psRoomsFROM =  PK_psRooms 
+																AND (SELECT COUNT(*) FROM LiveDB_shhbizbox8live.dbo.psPatRegisters zeb WHERE zeb.PK_psPatRegisters = zzj.FK_psPatRegisters and zeb.registrystatus NOT IN ('X'))>0 ORDER BY zzj.trandate DESC))>0
+																AND
+																(SELECT COUNT(*) FROM SHHDB.dbo.SHHRMS_RoomCleanHistory a WHERE FK_psRoom= PK_psRooms COLLATE Latin1_General_CI_AS and a.cleandate >
+																(SELECT TOP 1 zzj.trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer zzj WHERE zzj.FK_psRoomsFROM =  PK_psRooms
+																AND (SELECT COUNT(*) FROM LiveDB_shhbizbox8live.dbo.psPatRegisters zeb WHERE zeb.PK_psPatRegisters = zzj.FK_psPatRegisters and zeb.registrystatus NOT IN ('X'))>0  ORDER BY zzj.trandate DESC)) = 1 
+																
+														THEN 'For Cleaning'
+							  
+
+
+														WHEN 
+														
+															(SELECT COUNT(*) FROM (SELECT zzj.FK_psPatRegisters FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer zzj WHERE zzj.FK_psRoomsFROM = PK_psRooms
+																AND (SELECT COUNT(*) FROM LiveDB_shhbizbox8live.dbo.psPatRegisters zeb WHERE zeb.PK_psPatRegisters = zzj.FK_psPatRegisters and zeb.registrystatus NOT IN ('X')
+																
+																)>0
+																--ORDER BY zzj.trandate DESC
+																AND trandate >= (SELECT TOP 1 xxx.dischdate FROM (
+																						SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																						JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																						WHERE aa.registrystatus NOT IN ('X') and 
+																						 bb.FK_psRooms = zzz.PK_psRooms and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S')) and (bb.cancelflag<>1 or bb.cancelflag is null)
+																						ORDER BY dischdate desc) zzz
+																						UNION
+																						SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																						JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																						LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																						WHERE aa.FK_psRoomsFROM = zzz.PK_psRooms and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S')) -- and bb.registrystatus IN ('D', 'M')
+																						ORDER BY aa.trandate desc) yyy) xxx
+																						ORDER BY xxx.dischdate desc)
+																)
+																
+																
+																zzz) > 0
+																AND
+																(SELECT COUNT(*) FROM SHHDB.dbo.SHHRMS_RoomCleanTypeHistory a WHERE RoomNo= PK_psRooms COLLATE Latin1_General_CI_AS and a.ForCleanDateTime >
+																(SELECT TOP 1 zzj.trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer zzj WHERE zzj.FK_psRoomsFROM =  PK_psRooms 
+																AND (SELECT COUNT(*) FROM LiveDB_shhbizbox8live.dbo.psPatRegisters zeb WHERE zeb.PK_psPatRegisters = zzj.FK_psPatRegisters and zeb.registrystatus NOT IN ('X'))>0  ORDER BY zzj.trandate DESC))>0
+																AND
+																(SELECT COUNT(*) FROM SHHDB.dbo.SHHRMS_RoomCleanHistory a WHERE FK_psRoom= PK_psRooms COLLATE Latin1_General_CI_AS and a.cleandate >
+																(SELECT TOP 1 zzj.trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer zzj WHERE zzj.FK_psRoomsFROM =  PK_psRooms
+																AND (SELECT COUNT(*) FROM LiveDB_shhbizbox8live.dbo.psPatRegisters zeb WHERE zeb.PK_psPatRegisters = zzj.FK_psPatRegisters and zeb.registrystatus NOT IN ('X'))>0  ORDER BY zzj.trandate DESC)) = 0 
+																
+														THEN 'For Cleaning'
+
+
+
+													  WHEN
+                                                          (SELECT COUNT(PK_TRXNO)
+                                                           FROM      SHHDB.dbo.SHHRMS_RoomCleanTypeHistory hha
+                                                           WHERE   hha.FK_pspatRegisters =
+                                                                                 (SELECT TOP 1 xxx.PK_psPatRegisters FROM (
+																						SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																						JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																						WHERE aa.registrystatus NOT IN ('X') and 
+																						 bb.FK_psRooms = zzz.PK_psRooms and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S'))  and (bb.cancelflag<>1 or bb.cancelflag is null)
+																						ORDER BY dischdate desc) zzz
+																						UNION
+																						SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																						JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																						LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																						WHERE aa.FK_psRoomsFROM = zzz.PK_psRooms and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S'))  -- and bb.registrystatus IN ('D', 'M')
+																						ORDER BY aa.trandate desc) yyy) xxx
+																						ORDER BY xxx.dischdate desc)) > 0 AND
+                                                          (SELECT COUNT(PK_TRXNO)
+                                                           FROM      SHHDB.dbo.SHHRMS_PatientOutinv hha
+                                                           WHERE   hha.FK_pspatRegisters =
+                                                                                 (SELECT TOP 1 xxx.PK_psPatRegisters FROM (
+																						SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																						JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																						WHERE aa.registrystatus NOT IN ('X') and 
+																						 bb.FK_psRooms = zzz.PK_psRooms and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S'))  and (bb.cancelflag<>1 or bb.cancelflag is null)
+																						ORDER BY dischdate desc) zzz
+																						UNION
+																						SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																						JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																						LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																						WHERE aa.FK_psRoomsFROM = zzz.PK_psRooms and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S'))  -- and bb.registrystatus IN ('D', 'M')
+																						ORDER BY aa.trandate desc) yyy) xxx
+																						ORDER BY xxx.dischdate desc)) > 0 AND
+                                                          (SELECT COUNT(PK_TRXNO)
+                                                           FROM      SHHDB.dbo.SHHRMS_RoomCleanHistory hha
+                                                           WHERE   hha.FK_pspatRegisters =
+                                                                                 (SELECT TOP 1 xxx.PK_psPatRegisters FROM (
+																						SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																						JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																						WHERE aa.registrystatus NOT IN ('X') and 
+																						 bb.FK_psRooms = zzz.PK_psRooms and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S'))  and (bb.cancelflag<>1 or bb.cancelflag is null)
+																						ORDER BY dischdate desc) zzz
+																						UNION
+																						SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																						JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																						LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																						WHERE aa.FK_psRoomsFROM = zzz.PK_psRooms and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S'))  -- and bb.registrystatus IN ('D', 'M')
+																						ORDER BY aa.trandate desc) yyy) xxx
+																						ORDER BY xxx.dischdate desc) AND hha.cleandate >
+                                                                                 (SELECT TOP 1 xxx.dischdate FROM (
+																						SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																						JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																						WHERE aa.registrystatus NOT IN ('X') and 
+																						 bb.FK_psRooms = zzz.PK_psRooms and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S')) and (bb.cancelflag<>1 or bb.cancelflag is null)
+																						ORDER BY dischdate desc) zzz
+																						UNION
+																						SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																						JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																						LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																						WHERE aa.FK_psRoomsFROM = zzz.PK_psRooms and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S')) -- and bb.registrystatus IN ('D', 'M')
+																						ORDER BY aa.trandate desc) yyy) xxx
+																						ORDER BY xxx.dischdate desc)) = 0 THEN 'For Cleaning' 
+
+
+														 WHEN
+                                                          (SELECT COUNT(PK_TRXNO)
+                                                           FROM      SHHDB.dbo.SHHRMS_RoomCleanTypeHistory hha
+                                                           WHERE   hha.FK_pspatRegisters =
+                                                                                 (SELECT TOP 1 xxx.PK_psPatRegisters FROM (
+																						SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																						JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																						WHERE aa.registrystatus NOT IN ('X') and 
+																						 bb.FK_psRooms = zzz.PK_psRooms and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S'))  and (bb.cancelflag<>1 or bb.cancelflag is null)
+																						ORDER BY dischdate desc) zzz
+																						UNION
+																						SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																						JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																						LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																						WHERE aa.FK_psRoomsFROM = zzz.PK_psRooms and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S'))  -- and bb.registrystatus IN ('D', 'M')
+																						ORDER BY aa.trandate desc) yyy) xxx
+																						ORDER BY xxx.dischdate desc)) > 0 AND
+                                                          (SELECT COUNT(PK_TRXNO)
+                                                           FROM      SHHDB.dbo.SHHRMS_PatientOutinv hha
+                                                           WHERE   hha.FK_pspatRegisters =
+                                                                                 (SELECT TOP 1 xxx.PK_psPatRegisters FROM (
+																						SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																						JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																						WHERE aa.registrystatus NOT IN ('X') and 
+																						 bb.FK_psRooms = zzz.PK_psRooms and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S'))  and (bb.cancelflag<>1 or bb.cancelflag is null)
+																						ORDER BY dischdate desc) zzz
+																						UNION
+																						SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																						JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																						LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																						WHERE aa.FK_psRoomsFROM = zzz.PK_psRooms and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S'))  -- and bb.registrystatus IN ('D', 'M')
+																						ORDER BY aa.trandate desc) yyy) xxx
+																						ORDER BY xxx.dischdate desc)) > 0 AND
+                                                          (SELECT COUNT(PK_TRXNO)
+                                                           FROM      SHHDB.dbo.SHHRMS_RoomCleanHistory hha
+                                                           WHERE   hha.FK_pspatRegisters =
+                                                                                 (SELECT TOP 1 xxx.PK_psPatRegisters FROM (
+																						SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																						JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																						WHERE aa.registrystatus NOT IN ('X') and 
+																						 bb.FK_psRooms = zzz.PK_psRooms and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S'))  and (bb.cancelflag<>1 or bb.cancelflag is null)
+																						ORDER BY dischdate desc) zzz
+																						UNION
+																						SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																						JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																						LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																						WHERE aa.FK_psRoomsFROM = zzz.PK_psRooms and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S'))  -- and bb.registrystatus IN ('D', 'M')
+																						ORDER BY aa.trandate desc) yyy) xxx
+																						ORDER BY xxx.dischdate desc) AND hha.cleandate >
+                                                                                 (SELECT TOP 1 xxx.dischdate FROM (
+																						SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																						JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																						WHERE aa.registrystatus NOT IN ('X') and 
+																						 bb.FK_psRooms = zzz.PK_psRooms and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S')) and (bb.cancelflag<>1 or bb.cancelflag is null)
+																						ORDER BY dischdate desc) zzz
+																						UNION
+																						SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																						JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																						LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																						WHERE aa.FK_psRoomsFROM = zzz.PK_psRooms and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S')) -- and bb.registrystatus IN ('D', 'M')
+																						ORDER BY aa.trandate desc) yyy) xxx
+																						ORDER BY xxx.dischdate desc)) = 1 THEN 'For Cleaning' 
+		
+															--WHEN
+              --                                            (SELECT COUNT(PK_TRXNO)
+              --                                             FROM      SHHDB.dbo.SHHRMS_RoomCleanTypeHistory hha
+              --                                             WHERE   hha.FK_pspatRegisters =
+              --                                                                   (SELECT TOP 1 PK_psPatRegisters
+              --                                                                    FROM      LiveDB_shhbizbox8live.dbo.psPatRegisters jja LEFT OUTER JOIN
+              --                                                                                      LiveDB_shhbizbox8live.dbo.psAdmissions jjb ON jja.PK_psPatRegisters = jjb.FK_psPatRegisters
+              --                                                                    WHERE   jjb.FK_psRooms = zzz.PK_psRooms AND jja.cancelflag <> 1 and jja.FK_mscServiceType <> 1005 and jjb.cancelflag<>1
+              --                                                                    ORDER BY dischdate DESC)) > 0 THEN 'For Cleaning' 
+				  						  
+
+
+														WHEN
+                                                          (SELECT COUNT(kka.PK_TRXNO)
+                                                           FROM      SHHDB.dbo.SHHRMS_RoomReservationHistory kka
+                                                           WHERE   kka.ResExpdatetmie >
+                                                                                 (SELECT TOP 1 xxx.dischdate FROM (
+																						SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																						JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																						WHERE aa.registrystatus NOT IN ('X') and 
+																						 bb.FK_psRooms = zzz.PK_psRooms and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S')) and (bb.cancelflag<>1 or bb.cancelflag is null)
+																						ORDER BY dischdate desc) zzz
+																						UNION
+																						SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																						JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																						LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																						WHERE aa.FK_psRoomsFROM = zzz.PK_psRooms and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S')) -- and bb.registrystatus IN ('D', 'M')
+																						ORDER BY aa.trandate desc) yyy) xxx
+																						ORDER BY xxx.dischdate desc) AND kka.FK_psRooms = zzz.PK_psRooms COLLATE Latin1_General_CI_AS AND kka.isCancel <> 1 and kka.ResExpdatetmie>getdate()) > 0 
+																				  
+																				  AND
+															
+															((SELECT COUNT(PK_TRXNO)
+                                                           FROM      SHHDB.dbo.SHHRMS_RoomCleanHistory hha
+                                                           WHERE   hha.FK_pspatRegisters =
+                                                                                 (SELECT TOP 1 xxx.PK_psPatRegisters FROM (
+																						SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																						JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																						WHERE aa.registrystatus NOT IN ('X') and 
+																						 bb.FK_psRooms = zzz.PK_psRooms and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S'))  and (bb.cancelflag<>1 or bb.cancelflag is null)
+																						ORDER BY dischdate desc) zzz
+																						UNION
+																						SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																						JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																						LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																						WHERE aa.FK_psRoomsFROM = zzz.PK_psRooms and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S'))  -- and bb.registrystatus IN ('D', 'M')
+																						ORDER BY aa.trandate desc) yyy) xxx
+																						ORDER BY xxx.dischdate desc) and hha.FK_psRoom = zzz.PK_psRooms COLLATE Latin1_General_CI_AS
+																						
+																						and hha.cleandate> 
+																						(SELECT TOP 1 xxx.dischdate FROM (
+																						SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																						JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																						WHERE aa.registrystatus NOT IN ('X') and 
+																						 bb.FK_psRooms = zzz.PK_psRooms and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S')) and (bb.cancelflag<>1 or bb.cancelflag is null)
+																						ORDER BY dischdate desc) zzz
+																						UNION
+																						SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																						JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																						LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																						WHERE aa.FK_psRoomsFROM = zzz.PK_psRooms and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S')) -- and bb.registrystatus IN ('D', 'M')
+																						ORDER BY aa.trandate desc) yyy) xxx
+																						ORDER BY xxx.dischdate desc)
+																						)>1
+
+																OR (SELECT COUNT(*) FROM SHHDB.dbo.SHHRMS_RoomCleanHistory addt WHERE addt.FK_psRoom=zzz.PK_psRooms COLLATE Latin1_General_CI_AS) < 1)
+																				  
+																				  THEN
+                                                          (SELECT TOP 1 CASE WHEN kka.ReserveType = 'E' THEN 'Reserved ER' WHEN kka.ReserveType = 'T' THEN 'Reserved Transfer' ELSE 'Reserved Direct'  END
+                                                           FROM      SHHDB.dbo.SHHRMS_RoomReservationHistory kka
+                                                           WHERE   kka.ResExpdatetmie >
+                                                                                 (SELECT TOP 1 xxx.dischdate FROM (
+																						SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																						JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																						WHERE aa.registrystatus NOT IN ('X') and 
+																						 bb.FK_psRooms = zzz.PK_psRooms and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S')) and (bb.cancelflag<>1 or bb.cancelflag is null)
+																						ORDER BY dischdate desc) zzz
+																						UNION
+																						SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																						JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																						LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																						WHERE aa.FK_psRoomsFROM = zzz.PK_psRooms and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S')) -- and bb.registrystatus IN ('D', 'M')
+																						ORDER BY aa.trandate desc) yyy) xxx
+																						ORDER BY xxx.dischdate desc)
+																						AND kka.FK_psRooms = zzz.PK_psRooms COLLATE Latin1_General_CI_AS and kka.isCancel<>1 and kka.ResExpdatetmie>getdate()
+                                                           ORDER BY kka.ResExpdatetmie DESC) 
+														
+														WHEN
+
+														(SELECT COUNT(kka.PK_TRXNO)
+                                                           FROM      SHHDB.dbo.SHHRMS_RoomReservationHistory kka
+                                                           WHERE  kka.FK_psRooms = zzz.PK_psRooms COLLATE Latin1_General_CI_AS AND kka.isCancel <> 1) > 0 
+																				  
+																				  AND
+															
+															(SELECT COUNT(*)  FROM    LiveDB_shhbizbox8live.dbo.psPatRegisters jja LEFT OUTER JOIN
+                                                                                                    LiveDB_shhbizbox8live.dbo.psAdmissions jjb ON jja.PK_psPatRegisters = jjb.FK_psPatRegisters
+                                                                                  WHERE   jjb.FK_psRooms = zzz.PK_psRooms AND jja.cancelflag <> 1 and (jja.FK_mscServiceType<>1005 or (jja.FK_mscServiceType=1005 and newbornstatus='S')))=0
+																				  
+															THEN
+                                                          (SELECT TOP 1 CASE WHEN kka.ReserveType = 'E' THEN 'Reserved ER' WHEN kka.ReserveType = 'T' THEN 'Reserved Transfer' ELSE 'Reserved Direct'  END
+                                                           
+														   FROM      SHHDB.dbo.SHHRMS_RoomReservationHistory kka
+                                                           WHERE  kka.FK_psRooms = zzz.PK_psRooms COLLATE Latin1_General_CI_AS
+                                                           ORDER BY kka.Reqdatetime DESC)
+
+
+
+
+														   WHEN (SELECT count(PK_psPatRegisters) FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa
+															LEFT OUTER JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters= bb.FK_psPatRegisters
+															WHERE (bb.FK_psRooms = zzz.PK_psRooms OR bb.bedno = zzz.PK_psRooms) and aa.cancelflag<> 1 and bb.cancelflag<>1	 )=0 THEN
+
+															'Available'
+
+
+
+														   WHEN 
+														
+															(SELECT COUNT(*) FROM (SELECT zzj.FK_psPatRegisters FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer zzj WHERE zzj.FK_psRoomsFROM = PK_psRooms
+																AND (SELECT COUNT(*) FROM LiveDB_shhbizbox8live.dbo.psPatRegisters zeb WHERE zeb.PK_psPatRegisters = zzj.FK_psPatRegisters and zeb.registrystatus NOT IN ('X')  )>0
+																AND trandate >= (SELECT TOP 1 xxx.dischdate FROM (
+																						SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																						JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																						WHERE aa.registrystatus NOT IN ('X') and 
+																						 bb.FK_psRooms = zzz.PK_psRooms and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S')) and (bb.cancelflag<>1 or bb.cancelflag is null)
+																						ORDER BY dischdate desc) zzz
+																						UNION
+																						SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																						JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																						LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																						WHERE aa.FK_psRoomsFROM = zzz.PK_psRooms and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S')) -- and bb.registrystatus IN ('D', 'M')
+																						ORDER BY aa.trandate desc) yyy) xxx
+																						ORDER BY xxx.dischdate desc)
+																--ORDER BY zzj.trandate DESC
+																) zzz) > 0
+																AND
+																(SELECT COUNT(*) FROM SHHDB.dbo.SHHRMS_RoomCleanTypeHistory a WHERE RoomNo= PK_psRooms COLLATE Latin1_General_CI_AS and a.ForCleanDateTime >
+																(SELECT TOP 1 zzj.trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer zzj WHERE zzj.FK_psRoomsFROM =  PK_psRooms 
+																AND (SELECT COUNT(*) FROM LiveDB_shhbizbox8live.dbo.psPatRegisters zeb WHERE zeb.PK_psPatRegisters = zzj.FK_psPatRegisters and zeb.registrystatus NOT IN ('X'))>0  ORDER BY zzj.trandate DESC))>0
+																AND
+																(SELECT COUNT(*) FROM SHHDB.dbo.SHHRMS_RoomCleanHistory a WHERE FK_psRoom= PK_psRooms COLLATE Latin1_General_CI_AS and a.cleandate >
+																(SELECT TOP 1 zzj.trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer zzj WHERE zzj.FK_psRoomsFROM =  PK_psRooms
+																AND (SELECT COUNT(*) FROM LiveDB_shhbizbox8live.dbo.psPatRegisters zeb WHERE zeb.PK_psPatRegisters = zzj.FK_psPatRegisters and zeb.registrystatus NOT IN ('X'))>0 ORDER BY zzj.trandate DESC)) > 1 
+																
+																THEN 'Available'
+
+													
+
+													
+																				  
+																				  
+																				  
+
+														   
+														   WHEN
+                                                          (SELECT COUNT(PK_TRXNO)
+                                                           FROM      SHHDB.dbo.SHHRMS_RoomCleanTypeHistory hha
+                                                           WHERE   hha.FK_pspatRegisters =
+                                                                                 (SELECT TOP 1 xxx.PK_psPatRegisters FROM (
+																						SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																						JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																						WHERE aa.registrystatus NOT IN ('X') and 
+																						 bb.FK_psRooms = zzz.PK_psRooms and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S'))  and (bb.cancelflag<>1 or bb.cancelflag is null)
+																						ORDER BY dischdate desc) zzz
+																						UNION
+																						SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																						JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																						LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																						WHERE aa.FK_psRoomsFROM = zzz.PK_psRooms and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S'))  -- and bb.registrystatus IN ('D', 'M')
+																						ORDER BY aa.trandate desc) yyy) xxx
+																						ORDER BY xxx.dischdate desc)) > 0 AND
+                                                          (SELECT COUNT(PK_TRXNO)
+                                                           FROM      SHHDB.dbo.SHHRMS_PatientOutinv hha
+                                                           WHERE   hha.FK_pspatRegisters =
+                                                                                 (SELECT TOP 1 xxx.PK_psPatRegisters FROM (
+																						SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																						JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																						WHERE aa.registrystatus NOT IN ('X') and 
+																						 bb.FK_psRooms = zzz.PK_psRooms and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S'))  and (bb.cancelflag<>1 or bb.cancelflag is null)
+																						ORDER BY dischdate desc) zzz
+																						UNION
+																						SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																						JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																						LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																						WHERE aa.FK_psRoomsFROM = zzz.PK_psRooms and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S'))  -- and bb.registrystatus IN ('D', 'M')
+																						ORDER BY aa.trandate desc) yyy) xxx
+																						ORDER BY xxx.dischdate desc)) > 0 AND
+                                                          (SELECT COUNT(PK_TRXNO)
+                                                           FROM      SHHDB.dbo.SHHRMS_RoomCleanHistory hha
+                                                           WHERE   hha.FK_pspatRegisters =
+                                                                                 (SELECT TOP 1 xxx.PK_psPatRegisters FROM (
+																						SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																						JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																						WHERE aa.registrystatus NOT IN ('X') and 
+																						 bb.FK_psRooms = zzz.PK_psRooms and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S'))  and (bb.cancelflag<>1 or bb.cancelflag is null)
+																						ORDER BY dischdate desc) zzz
+																						UNION
+																						SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																						JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																						LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																						WHERE aa.FK_psRoomsFROM = zzz.PK_psRooms and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S'))  -- and bb.registrystatus IN ('D', 'M')
+																						ORDER BY aa.trandate desc) yyy) xxx
+																						ORDER BY xxx.dischdate desc) AND hha.cleandate >
+                                                                                 (SELECT TOP 1 xxx.dischdate FROM (
+																						SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																						JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																						WHERE aa.registrystatus NOT IN ('X') and 
+																						 bb.FK_psRooms = zzz.PK_psRooms and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S')) and (bb.cancelflag<>1 or bb.cancelflag is null)
+																						ORDER BY dischdate desc) zzz
+																						UNION
+																						SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																						JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																						LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																						WHERE aa.FK_psRoomsFROM = zzz.PK_psRooms and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S')) -- and bb.registrystatus IN ('D', 'M')
+																						ORDER BY aa.trandate desc) yyy) xxx
+																						ORDER BY xxx.dischdate desc)) > 1 THEN 'Available' 
+														
+														
+														WHEN
+                                                          (SELECT COUNT(PK_TRXNO)
+                                                           FROM      SHHDB.dbo.SHHRMS_RoomCleanTypeHistory hha
+                                                           WHERE   hha.FK_pspatRegisters =
+                                                                                  (SELECT TOP 1 xxx.PK_psPatRegisters FROM (
+																						SELECT * FROM (SELECT TOP 1 aa.PK_psPatRegisters,aa.dischdate FROM LiveDB_shhbizbox8live.dbo.psPatRegisters aa  
+																						JOIN LiveDB_shhbizbox8live.dbo.psAdmissions bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters  
+																						WHERE aa.registrystatus NOT IN ('X') and 
+																						 bb.FK_psRooms = zzz.PK_psRooms and aa.cancelflag <>1 and (aa.FK_mscServiceType<>1005 or (aa.FK_mscServiceType=1005 and newbornstatus='S'))  and (bb.cancelflag<>1 or bb.cancelflag is null)
+																						ORDER BY dischdate desc) zzz
+																						UNION
+																						SELECT * FROM (SELECT top 1 aa.FK_psPatRegisters, trandate FROM LiveDB_shhbizbox8live.dbo.psPatRoomTransfer aa
+																						JOIN LiveDB_shhbizbox8live.dbo.psPatRegisters bb on aa.FK_psPatRegisters = bb.PK_psPatRegisters
+																						LEFT JOIN LiveDB_shhbizbox8live.dbo.psAdmissions cc on bb.PK_psPatRegisters = cc.FK_psPatRegisters
+																						WHERE aa.FK_psRoomsFROM = zzz.PK_psRooms and bb.cancelflag<>1 and (bb.FK_mscServiceType<>1005 or (bb.FK_mscServiceType=1005 and newbornstatus='S'))  -- and bb.registrystatus IN ('D', 'M')
+																						ORDER BY aa.trandate desc) yyy) xxx
+																						ORDER BY xxx.dischdate desc)) = 0 AND
+                                                          (SELECT COUNT(PK_TRXNO)
+                                                           FROM      SHHDB.dbo.SHHRMS_RoomCleanTypeHistory hha
+                                                           WHERE   hha.RoomNo = zzz.PK_psRooms COLLATE Latin1_General_CI_AS) = 0 
+														   
+														   AND
+														  
+														  (SELECT COUNT(*)  FROM    LiveDB_shhbizbox8live.dbo.psPatRegisters jja LEFT OUTER JOIN
+                                                                                                    LiveDB_shhbizbox8live.dbo.psAdmissions jjb ON jja.PK_psPatRegisters = jjb.FK_psPatRegisters
+                                                                                  WHERE   jjb.FK_psRooms = zzz.PK_psRooms AND jja.cancelflag <> 1 and (jja.FK_mscServiceType<>1005 or (jja.FK_mscServiceType=1005 and newbornstatus='S')))=0
+
+														   THEN 'Available' 
+														   
+														  
+															END					  
+															  
+															ELSE yyy.description  END AS roomstatus
+                                    FROM      LiveDB_shhbizbox8live.dbo.psRooms AS zzz LEFT OUTER JOIN
+                                                      LiveDB_shhbizbox8live.dbo.mscRoomStatus AS yyy ON zzz.FK_mscRoomStatus = yyy.PK_mscRoomStatus
+                                    WHERE   (zzz.PK_psRooms NOT IN
+                                                          (SELECT bb.FK_psRooms
+                                                           FROM      LiveDB_shhbizbox8live.dbo.psPatRegisters AS aa LEFT OUTER JOIN
+                                                                             LiveDB_shhbizbox8live.dbo.psAdmissions AS bb ON aa.PK_psPatRegisters = bb.FK_psPatRegisters LEFT OUTER JOIN
+                                                                             LiveDB_shhbizbox8live.dbo.psRooms AS cc ON bb.FK_psRooms = cc.PK_psRooms
+                                                           WHERE   (aa.cancelflag <> 1) AND (aa.pattrantype = 'I') AND (aa.registrystatus <> 'D') AND (cc.FK_mscNRStations NOT IN (1005, 1006, 1008, 1009, 1000,1003,1004)))) AND (zzz.FK_mscNRStations NOT IN (1005, 1006, 1008, 1009, 1000,1003,1004)) 
+                                                      AND (zzz.FK_mscRoomStatus NOT IN (1012, 1002, 1000,1013))) AS HHHA
+GO
+
+

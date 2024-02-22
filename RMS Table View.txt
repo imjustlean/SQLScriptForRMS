@@ -1,0 +1,64 @@
+USE [SHHDB]
+GO
+
+/****** Object:  View [dbo].[RoomViewDetailsNSTable]    Script Date: 02/22/2024 11:50:53 AM ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+
+
+
+ALTER VIEW [dbo].[RoomViewDetailsNSTable]
+AS
+SELECT cast(PK_mscNrstation as varchar(MAX)) [StationID],[NurseStation], 
+isnull(MAX(case when row_no = 1 then PK_psRooms end), '') as Room_1,  
+isnull(MAX(case when row_no = 2 then PK_psRooms end), '') as Room_2,  
+isnull(MAX(case when row_no = 3 then PK_psRooms end), '') as Room_3,  
+isnull(MAX(case when row_no = 4 then PK_psRooms end), '') as Room_4,  
+isnull(MAX(case when row_no = 5 then PK_psRooms end), '') as Room_5,  
+isnull(MAX(case when row_no = 6 then PK_psRooms end), '') as Room_6,  
+isnull(MAX(case when row_no = 7 then PK_psRooms end), '') as Room_7,  
+isnull(MAX(case when row_no = 8 then PK_psRooms end), '') as Room_8,  
+isnull(MAX(case when row_no = 9 then PK_psRooms end), '') as Room_9,  
+isnull(MAX(case when row_no = 10 then PK_psRooms end), '') as Room_10,  
+isnull(MAX(case when row_no = 11 then PK_psRooms end), '') as Room_11,  
+isnull(MAX(case when row_no = 12 then PK_psRooms end), '') as Room_12,  
+isnull(MAX(case when row_no = 13 then PK_psRooms end), '') as Room_13,  
+isnull(MAX(case when row_no = 14 then PK_psRooms end), '') as Room_14,  
+isnull(MAX(case when row_no = 15 then PK_psRooms end), '') as Room_15,  
+isnull(MAX(case when row_no = 16 then PK_psRooms end), '') as Room_16,  
+isnull(MAX(case when row_no = 17 then PK_psRooms end), '') as Room_17,  
+isnull(MAX(case when row_no = 18 then PK_psRooms end), '') as Room_18  
+FROM
+(SELECT b.PK_mscNrstation,a.PK_psRooms,b.description[NurseStation],isnull((SELECT TOP 1 case when registrystatus = 'A' then 'Occupied'  
+when registrystatus = 'X' then 'Available' 
+when registrystatus = 'D' then 'Available' 
+when registrystatus = 'U' then 'Occupied' 
+when registrystatus = 'C' then 'For Clearance' 
+when registrystatus = 'M' then 'For Discharge' 
+when registrystatus = 'F' then 'For Clearance' 
+else c.description end FROM LiveDB_shhbizbox8live.dbo.psPatRegisters zz 
+LEFT OUTER JOIN LiveDB_shhbizbox8live.dbo.psAdmissions yy on zz.PK_psPatRegisters = yy.FK_psPatRegisters 
+where zz.pattrantype = 'I'  AND zz.cancelflag <> 1 
+AND yy.FK_psRooms = a.PK_psRooms and registrystatus<>'D'),c.description) [RoomStatus],  
+ROW_NUMBER() OVER(PARTITION BY b.description order by a.pk_psrooms) as row_no 
+FROM LiveDB_shhbizbox8live.dbo.psRooms a 
+LEFT OUTER JOIN LiveDB_shhbizbox8live.dbo.mscNrstation b on a.FK_mscNRStations = b.PK_mscNrstation 
+LEFT OUTER JOIN LiveDB_shhbizbox8live.dbo.mscRoomStatus c on a.FK_mscRoomStatus = c.PK_mscRoomStatus 
+WHERE b.description not in ('ER', 'ICU', 'NICU')and c.PK_mscRoomStatus NOT IN( 1012,1013) and b.PK_mscNrstation NOT IN(1003,1004)) ABCD
+GROUP BY ABCD.PK_mscNrstation,[NurseStation]							    
+
+
+								
+
+                               
+
+GO
+
+
